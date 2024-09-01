@@ -1,43 +1,94 @@
 import hashlib as hasher
 import datetime as date
-
-def create_genesis_block():
-  return Block(0, date.datetime.now(), "In the beginning God created the heaven and the earth", "0")
-
-
-def next_block(last_block):
-  this_index = last_block.index + 1
-  this_timestamp = date.datetime.now()
-  this_data = "Hey! I'm block " + str(this_index)
-  return Block(this_index, this_timestamp, this_data, last_block.hash)
+import json
+from urllib.parse import urlparse
+from uuid import uuid4
+import requests
 
 class Block:
-  def __init__(self, index, timestamp, data, previous_hash):
+  def __init__(self, index, proof, transactions, previous_hash):
     self.index = index
-    self.timestamp = timestamp
-    self.data = data
+    self.proof = proof
+    self.timestamp = date.datetime.now()
+    self.transactions = transactions
     self.previous_hash = previous_hash
-    self.hash = self.hash_block()
-  
-  def hash_block(self):
-    sha = hasher.sha256()
-    sha.update(str(self.index).encode() + 
-               str(self.timestamp).encode() + 
-               str(self.data).encode() + 
-               str(self.previous_hash).encode())
-    return sha.hexdigest()
-
-blockchain = [create_genesis_block()]
-previous_block = blockchain[0]
-
-num_of_blocks_to_add = 20
 
 
-for i in range(0, num_of_blocks_to_add):
-  block_to_add = next_block(previous_block)
-  blockchain.append(block_to_add)
-  previous_block = block_to_add
-  print ("Block #{} has been added to the blockchain!".format(block_to_add.index))
-  print ("Hash: {}\n".format(block_to_add.hash))
+class BlockChain:
+    def __init__(self) -> None:
+        self.chain = []
+        self.transactions = []
+        self.nodes = set()
 
+    def new_block(self, proof, previous_hash):
+       block = Block(len(self.chain) + 1, proof, self.transactions, previous_hash)
+       self.transactions = []
+
+       self.chain.append(block)
+       return block
     
+
+    def new_transaction(self, sender, recipient, amount):
+       self.transactions.append({
+          'sender': sender,
+          'recipient': recipient,
+          'amount': amount
+       })
+
+       return self.last_block['index'] + 1
+    
+    def register_new_nodes(self, url):
+        paresed_url = urlparse(url)
+
+        if paresed_url.netloc:
+          self.nodes.add(paresed_url.netloc)
+        else:
+           raise ValueError("Invalid URL")
+
+    def valid_chain(self, chain):
+
+        # To check if a chain is a valid chain we need to check the previous hash of each block the proof of work 
+
+        last_block = chain[0]
+       
+        current_index = 1
+
+        while current_index < len(chain):
+            block = chain[current_index]
+
+            last_block_hash = self.hash(last_block)
+            if block['previous_hash'] != last_block_hash:
+                return False    
+
+            if not self.valid_proof(last_block['proof'], block['proof'], last_block_hash):
+                return False    
+            last_block = block
+            current_index += 1  
+        return True
+    
+
+    def resolve_conflicts(self):
+        pass 
+    
+    @property
+    def last_block(self):
+        return self.chain[-1]
+    
+    def proof_of_work(self, last_proof):
+        proof = 0
+        while self.valid_proof(last_proof, proof) is False:
+            proof += 1
+
+        return proof
+
+    @staticmethod
+    def hash_block(block):
+       block_encoded = json.dumps(block, sort_keys=True).encode()
+       return hasher.sha256(block_encoded).hexdigest()
+    
+    @staticmethod
+    def valid_proof(last_proof, proof, last_hash):
+        guess = f'{last_proof}{proof}{last_hash}'.encode()
+        guess_hash = hasher.sha256(guess).hexdigest()
+        return guess_hash[:4] == "0000"
+
